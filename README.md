@@ -8,3 +8,18 @@ JavaScriptの実行エンジン『[Deno](https://deno.land/)』で動かすた�
 ```
 deno task hello
 ```
+
+## 簡単インストール
+
+Denoがインストールされている環境であれば以下のコマンドでインストールして動かせます。
+
+```
+deno instal --allow-all --unstable https://raw.githubusercontent.com/kujirahand/nadesiko3deno/main/src/dnako3.ts
+```
+
+Denoのbinパスをシェルに追加すれば下記のように実行できます。
+
+```
+dnako3 プログラム.nako3
+```
+
