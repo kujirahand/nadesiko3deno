@@ -1,6 +1,6 @@
 {
     "tasks_usage": "$ deno task hello",
     "tasks": {
-        "hello": "deno run --allow-all src/cnako3.ts -e '「こんにちは」と表示。'"
+        "hello": "deno run --allow-all src/dnako3.ts -e '「こんにちは」と表示。'"
     }
 }
