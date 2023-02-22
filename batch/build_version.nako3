@@ -1,0 +1,30 @@
+ROOT=母艦パスを「../」で相対パス展開。
+DENO_JSON = 「{ROOT}/deno.json」を開いてJSONデコード。
+VER=DENO_JSON["version"]
+VER_A = VERを「.」で区切る。
+F=「{ROOT}/src/dnako_version.ts」
+SRC=『/// nadesiko3deno バージョン情報
+// 型定義
+export interface DNakoVersion {
+    version: string;
+    major: number;
+    minor: number;
+    patch: number;
+}
+// 実際のバージョン定義 (自動生成されるので以下を編集しない)
+const dnakoVersion: DNakoVersion = {
+  version: '{VER}',
+  major: {VER1},
+  minor: {VER2},
+  patch: {VER3}
+}
+export default dnakoVersion
+』
+SRCの『{VER}』をVERに置換
+『{VER1}』をVER_A[0]に置換
+『{VER2}』をVER_A[1]に置換
+『{VER3}』をVER_A[2]に置換
+SRC=それ
+SRCをFに保存。
+SRCを表示。
+

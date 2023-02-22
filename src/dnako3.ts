@@ -2,28 +2,26 @@
 /**
  * コマンドライン版のなでしこ3 for Deno
  */
-
 import { posix } from 'https://deno.land/std@0.130.0/path/mod.ts'
 import { exec } from 'https://deno.land/std@0.176.0/node/child_process.ts'
 import * as process from 'https://deno.land/std@0.177.0/node/process.ts'
 import * as fs from 'https://deno.land/std@0.177.0/node/fs/promises.ts'
-import core from 'npm:nadesiko3core' // todo change version
 import fse from 'npm:fs-extra'
 import app from './commander_ja.ts'
 import path from 'node:path'
 
+// core
+import core from 'npm:nadesiko3core'
+// import core from '../nadesiko3core/index.mts'
+
+// dnako3
 import { PluginDeno, fileExists } from './plugin_deno.ts'
+import dnakoVersion from './dnako_version.ts'
 
-
-type NakoCompiler = core.NakoCompiler
-type NakoImportError = core.NakoImportError
-const nakoVersion = core.version
 type Ast = any
 
 // __dirname のために
 const __dirname = new URL('.', import.meta.url).pathname
-
-type NakoGlobal = core.NakoGlobal
 
 /** コマンドラインアクション */
 interface CNako3ArgOptions {
@@ -42,32 +40,32 @@ interface CNako3ArgOptions {
   ast: boolean
   lex: boolean
 }
-
-// --- core からの引用 ---
-
 interface CNako3Options {
   nostd: boolean
 }
 
-export interface CompilerOptions {
+// --- core からの引用 ---
+type NakoGlobal = any
+
+interface CompilerOptions {
   resetEnv: boolean; // 現在の環境をリセット
   testOnly: boolean; // テストだけを実行する
   resetAll: boolean; // 全ての環境をリセット
   preCode: string; // 環境を構築するためのコード
   nakoGlobal: NakoGlobal | null; // 実行に使う環境
 }
-
 /** コンパイラ実行オプションを生成 */
-function newCompilerOptions (initObj: any = {}): CompilerOptions {
-  if (typeof initObj !== 'object') { initObj = {} }
-  initObj.testOnly = initObj.testOnly || false
-  initObj.resetEnv = initObj.resetEnv || false
-  initObj.resetAll = initObj.resetAll || false
-  initObj.preCode = initObj.preCode || ''
-  initObj.nakoGlobal = initObj.nakoGlobal || null
-  return initObj
+function newCompilerOptions(initObj: any = {}): CompilerOptions {
+  if (typeof initObj !== 'object') {
+      initObj = {};
+  }
+  initObj.testOnly = initObj.testOnly || false;
+  initObj.resetEnv = initObj.resetEnv || false;
+  initObj.resetAll = initObj.resetAll || false;
+  initObj.preCode = initObj.preCode || '';
+  initObj.nakoGlobal = initObj.nakoGlobal || null;
+  return initObj;
 }
-
 
 /** CNako3 */
 export class CNako3 extends core.NakoCompiler {
@@ -78,14 +76,14 @@ export class CNako3 extends core.NakoCompiler {
     super({ useBasicPlugin: !opts.nostd })
     this.debug = false
     super.filename = 'main.nako3'
-    this.version = nakoVersion.version
+    this.version = dnakoVersion.version
     if (!opts.nostd) {
       super.addPluginFile('PluginNode', posix.join(__dirname, 'plugin_deno.ts'), PluginDeno)
     }
     // 必要な定数を設定
     super.addListener('beforeRun', (g: NakoGlobal) => {
-      g.__varslist[0]['ナデシコ種類'] = 'cnako3'
-      g.__varslist[0]['ナデシコバージョン'] = this.version
+      g.__varslist[0]['ナデシコ種類'] = 'dnako3'
+      g.__varslist[0]['ナデシコバージョン'] = dnakoVersion.version
     })
   }
 
@@ -95,7 +93,7 @@ export class CNako3 extends core.NakoCompiler {
     const args = [...denoArgs]
     if (args.length === 2) { args.push('-h') }
 
-    const verInfo = `v${nakoVersion.version}`
+    const verInfo = `v${dnakoVersion.version}`
     // commanderを使って引数を解析する
     app
       .title('日本語プログラミング言語「なでしこ」' + verInfo)
@@ -250,7 +248,7 @@ export class CNako3 extends core.NakoCompiler {
     // ファイルを読んで実行する
     try {
       // コンパイルと実行を行うメソッド
-      const g = await this.runAsync(src, opt.mainfile)
+      const g = await this.runAsync2(src, opt.mainfile)
       return g
     } catch (e: any) {
       // 文法エラーなどがあった場合
@@ -331,12 +329,12 @@ export class CNako3 extends core.NakoCompiler {
       if (opt.source.indexOf('表示') < 0) {
         opt.source = '' + opt.source + 'を表示。'
       }
-      await this.runAsync(opt.source, 'main.nako3')
+      await this.runAsync2(opt.source, 'main.nako3')
     } catch (e) {
       // エラーになったら元のワンライナーで再挑戦
       try {
         if (opt.source !== org) {
-          await this.runAsync(org, 'main.nako3')
+          await this.runAsync2(org, 'main.nako3')
         } else {
           throw e
         }
@@ -393,14 +391,14 @@ export class CNako3 extends core.NakoCompiler {
    */
   outputAST (opt: any, src: string) {
     const ast = super.parse(src, opt.mainfile)
-    console.log(super.outputJSON(ast, 0))
+    console.log(this.outputJSON(ast, 0))
   }
 
   // REPL(対話実行環境)の場合
   async cnakoRepl (_opt: any) {
     const fname = posix.join(__dirname, '../src/repl.nako3')
     const src = await Deno.readTextFile(fname)
-    await this.runAsync(src, 'main.nako3')
+    await this.runAsync2(src, 'main.nako3')
   }
 
   // マニュアルを表示する
@@ -437,7 +435,7 @@ export class CNako3 extends core.NakoCompiler {
         if (/\.(js|mjs)(\.txt)?$/.test(name)) {
           const jspath = CNako3.findJSPluginFile(name, fromFile, __dirname, log)
           if (jspath === '') {
-            throw new NakoImportError(`JSプラグイン『${name}』が見つかりません。以下のパスを検索しました。\n${log.join('\n')}`, token.file, token.line)
+            throw new core.NakoImportError(`JSプラグイン『${name}』が見つかりません。以下のパスを検索しました。\n${log.join('\n')}`, token.file, token.line)
           }
           return { filePath: jspath, type: 'js' }
         }
@@ -459,11 +457,11 @@ export class CNako3 extends core.NakoCompiler {
         // 拡張子がない、あるいは、(.js|.mjs|.nako3|.nako)以外はJSモジュールと見なす
         const jspath2 = CNako3.findJSPluginFile(name, fromFile, __dirname, log)
         if (jspath2 === '') {
-          throw new NakoImportError(`JSプラグイン『${name}』が見つかりません。以下のパスを検索しました。\n${log.join('\n')}`, token.file, token.line)
+          throw new core.NakoImportError(`JSプラグイン『${name}』が見つかりません。以下のパスを検索しました。\n${log.join('\n')}`, token.file, token.line)
         }
         return { filePath: jspath2, type: 'js' }
       },
-      readNako3: (name, token) => {
+      readNako3: (name: string, token: any) => {
         const loader:any = { task: null }
         // ファイルかHTTPか
         if (name.startsWith('http://') || name.startsWith('https://')) {
@@ -471,7 +469,7 @@ export class CNako3 extends core.NakoCompiler {
           loader.task = (async () => {
             const res = await fetch(name)
             if (!res.ok) {
-              throw new NakoImportError(`『${name}』からのダウンロードに失敗しました: ${res.status} ${res.statusText}`, token.file, token.line)
+              throw new core.NakoImportError(`『${name}』からのダウンロードに失敗しました: ${res.status} ${res.statusText}`, token.file, token.line)
             }
             return await res.text()
           })()
@@ -479,7 +477,7 @@ export class CNako3 extends core.NakoCompiler {
           // ファイルを非同期で読み込む
           loader.task = async () => {
             if (!fileExists(name)) {
-              throw new NakoImportError(`ファイル ${name} が存在しません。`, token.file, token.line)
+              throw new core.NakoImportError(`ファイル ${name} が存在しません。`, token.file, token.line)
             }
             const s = await fs.readFile(name, { encoding: 'utf-8' })
             return s
@@ -488,7 +486,7 @@ export class CNako3 extends core.NakoCompiler {
         // 非同期で読み込む
         return loader
       },
-      readJs: (filePath, token) => {
+      readJs: (filePath: string, token: any) => {
         const loader: any = { task: null }
         if (process.platform === 'win32') {
           if (filePath.substring(1, 3) === ':\\') {
@@ -512,14 +510,14 @@ export class CNako3 extends core.NakoCompiler {
             try {
               await fs.writeFile(tmpFile, txt, 'utf-8')
             } catch (err) {
-              throw new NakoImportError(`URL『${filePath}』からダウンロードしたJSファイルがキャッシュに書き込めません。${err}`, token.file, token.line)
+              throw new core.NakoImportError(`URL『${filePath}』からダウンロードしたJSファイルがキャッシュに書き込めません。${err}`, token.file, token.line)
             }
             // 一時ファイルから読み込む
             try {
               const mod = await import(tmpFile)
               return mod.default
             } catch (err) {
-              throw new NakoImportError(`URL『${filePath}』からダウンロードしたはずのJSファイル読み込めません。${err}`, token.file, token.line)
+              throw new core.NakoImportError(`URL『${filePath}』からダウンロードしたはずのJSファイル読み込めません。${err}`, token.file, token.line)
             }
           }
         }
@@ -531,7 +529,7 @@ export class CNako3 extends core.NakoCompiler {
               const obj = Object.assign({}, mod)
               resolve(() => { return obj.default })
             }).catch((err) => {
-              const err2 = new NakoImportError(`ファイル『${filePath}』が読み込めません。${err}`, token.file, token.line)
+              const err2 = new core.NakoImportError(`ファイル『${filePath}』が読み込めません。${err}`, token.file, token.line)
               reject(err2)
             })
           })
@@ -551,13 +549,14 @@ export class CNako3 extends core.NakoCompiler {
   /**
    * 非同期でなでしこのコードを実行する
    */
-  async runAsync (code: string, fname: string, options: CompilerOptions|undefined = undefined): Promise<NakoGlobal> {
+  async runAsync2 (code: string, fname: string, options: CompilerOptions|undefined = undefined): Promise<NakoGlobal> {
     // オプション
     const opt = newCompilerOptions(options)
     // 取り込む文
     await this.loadDependencies(code, fname, opt.preCode)
     // 実行
-    return await super.runAsync(code, fname, options)
+    const g = await super.runAsync(code, fname, options)
+    return g
   }
 
   /**
@@ -578,7 +577,7 @@ export class CNako3 extends core.NakoCompiler {
       try {
         // ファイルがないと例外が出る
         const stat = Deno.statSync(f)
-        const b = !!(stat && stat.isFile())
+        const b = !!(stat && stat.isFile)
         cachePath[f] = b
         return b
       } catch (err: any) {
