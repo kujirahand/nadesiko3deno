@@ -1,4 +1,6 @@
-/// nadesiko3deno バージョン情報
+/**
+ * nadesiko3deno バージョン情報
+ */
 // 型定義
 export interface DNakoVersion {
     version: string;
@@ -8,9 +10,9 @@ export interface DNakoVersion {
 }
 // 実際のバージョン定義 (自動生成されるので以下を編集しない)
 const dnakoVersion: DNakoVersion = {
-  version: '3.4.6',
+  version: '3.4.7',
   major: 3,
   minor: 4,
-  patch: 6
+  patch: 7
 }
 export default dnakoVersion

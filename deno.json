@@ -3,7 +3,8 @@
     "tasks_usage": "$ deno task hello",
     "tasks": {
         "hello": "deno run --allow-all src/dnako3.ts -e '「こんにちは」と表示。'",
-        "build": "deno run --allow-all src/dnako3.ts batch/build_version.nako3"
+        "build": "deno run --allow-all src/dnako3.ts batch/build_version.nako3",
+        "hello2": "deno run --allow-all src/dnako3.ts -D sample/hello.nako3"
     }
 }
 

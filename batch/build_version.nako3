@@ -3,7 +3,9 @@ DENO_JSON = 「{ROOT}/deno.json」を開いてJSONデコード。
 VER=DENO_JSON["version"]
 VER_A = VERを「.」で区切る。
 F=「{ROOT}/src/dnako_version.ts」
-SRC=『/// nadesiko3deno バージョン情報
+SRC=『/**
+ * nadesiko3deno バージョン情報
+ */
 // 型定義
 export interface DNakoVersion {
     version: string;
@@ -26,5 +28,8 @@ SRCの『{VER}』をVERに置換
 『{VER3}』をVER_A[2]に置換
 SRC=それ
 SRCをFに保存。
+「-----------------」を表示。
 SRCを表示。
+「-----------------」を表示。
+「ok.」を表示。
 
