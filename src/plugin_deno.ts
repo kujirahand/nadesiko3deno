@@ -3,32 +3,46 @@
  * node.js のためのプラグイン
  */
 import * as process from 'https://deno.land/std@0.177.0/node/process.ts'
-import { exec, OutputMode } from 'https://deno.land/x/exec/mod.ts'
+import { exec, OutputMode } from "https://deno.land/x/exec@0.0.5/mod.ts"
 
-import { assert } from 'https://deno.land/std@0.83.0/testing/asserts.ts'
 import * as fs from 'https://deno.land/std@0.177.0/node/fs/promises.ts'
 import { Buffer } from 'https://deno.land/std@0.177.0/io/buffer.ts'
-import shellQuote from 'npm:shell-quote'
+
+import shellQuote from 'shell-quote'
+import fse from 'fs-extra'
 import path from 'node:path'
 import iconv from 'npm:iconv-lite'
 import opener from 'npm:opener'
-import fse from 'npm:fs-extra'
 // 「標準入力取得時」「尋」で利用
 import readline from 'npm:readline'
 // ハッシュ関数で利用
 import crypto from 'node:crypto'
 import os from 'node:os'
 
+import { NakoSystem } from "./plugin_api.mts"
+
+type NakoCallback = string | ((sys: NakoSystem) => void)
+// deno-lint-ignore no-explicit-any
+type NakoEventCallback = string | ((event: any, sys: NakoSystem) => void)
+
 // const __filename = new URL('', import.meta.url).pathname
 const __dirname = new URL('.', import.meta.url).pathname
 
 export const PluginDeno = {
+  'meta': {
+    type: 'const',
+    value: {
+      pluginName: 'plugin_deno',
+      description: 'Denoの機能を実装したもの',
+      nakoVersion: '3.6.3',
+    }
+  },
   '初期化': {
     type: 'func',
     josi: [],
     pure: true,
-    fn: function (sys: any) {
-      sys.__quotePath = (fpath: string) => {
+    fn: function (sys: NakoSystem) {
+      sys.tags.__quotePath = (fpath: string) => {
         if (process.platform === 'win32') {
           fpath = fpath.replace(/"/g, '')
           fpath = fpath.replace(/%/g, '"^%"')
@@ -40,7 +54,7 @@ export const PluginDeno = {
         }
         return fpath
       }
-      sys.__getBinPath = (tool: any) => {
+      sys.tags.__getBinPath = (tool: string) => {
         let fpath = tool
         if (process.platform === 'win32') {
           if (!fileExists(tool)) {
@@ -52,18 +66,18 @@ export const PluginDeno = {
         }
         return fpath
       }
-      sys.__getBokanPath = () => {
+      sys.tags.__getBokanPath = () => {
         let nakofile
         const cmd = path.basename(process.argv[1])
         if (cmd.indexOf('cnako3') < 0) { nakofile = process.argv[1] } else { nakofile = process.argv[2] }
 
         return path.dirname(path.resolve(nakofile))
       }
-      sys.__v0['コマンドライン'] = process.argv
-      sys.__v0['ナデシコランタイムパス'] = process.argv[0]
-      sys.__v0['ナデシコランタイム'] = path.basename(process.argv[0])
-      sys.__v0['母艦パス'] = sys.__getBokanPath()
-      sys.__v0['AJAX:ONERROR'] = null
+      sys.__setSysVar('コマンドライン', process.argv)
+      sys.__setSysVar('ナデシコランタイムパス', process.argv[0])
+      sys.__setSysVar('ナデシコランタイム', path.basename(process.argv[0]))
+      sys.__setSysVar('母艦パス', sys.tags.__getBokanPath())
+      sys.__setSysVar('AJAX:ONERROR', null)
     }
   },
   // @ファイル入出力
@@ -92,6 +106,7 @@ export const PluginDeno = {
     josi: [['を', 'から']],
     pure: true,
     asyncFn: true,
+    // deno-lint-ignore no-explicit-any
     fn: async function (f: string): Promise<any> {
       const s = await fs.readFile(f)
       return s
@@ -102,6 +117,7 @@ export const PluginDeno = {
     josi: [['を'], ['へ', 'に']],
     pure: true,
     asyncFn: true,
+    // deno-lint-ignore no-explicit-any
     fn: async function (s: any, f: string): Promise<void> {
       // Buffer?
       if (typeof s === 'string') {
@@ -121,7 +137,7 @@ export const PluginDeno = {
     josi: [['を', 'から']],
     pure: true,
     asyncFn: true,
-    fn: async function (s: string, sys: any) {
+    fn: async function (s: string, _sys: NakoSystem) {
       // iconv.skipDecodeWarning = true
       const buf = await fs.readFile(s)
       const text = iconv.decode(global.Buffer.from(buf), 'sjis')
@@ -133,7 +149,7 @@ export const PluginDeno = {
     josi: [['を'], ['へ', 'に']],
     pure: true,
     asyncFn: true,
-    fn: async function (s: string, f: string, sys: any) {
+    fn: async function (s: string, f: string, _sys: NakoSystem) {
       // iconv.skipDecodeWarning = true
       const buf = iconv.encode(s, 'Shift_JIS')
       await fs.writeFile(f, buf)
@@ -145,7 +161,7 @@ export const PluginDeno = {
     josi: [['を', 'から']],
     pure: true,
     asyncFn: true,
-    fn: async function (s: string, sys: any) {
+    fn: async function (s: string, _sys: NakoSystem) {
       const buf = await fs.readFile(s)
       const text = iconv.decode(global.Buffer.from(buf), 'euc-jp')
       return text
@@ -156,7 +172,7 @@ export const PluginDeno = {
     josi: [['を'], ['へ', 'に']],
     pure: true,
     asyncFn: true,
-    fn: async function (s: string, f: string, sys: any) {
+    fn: async function (s: string, f: string, _sys: NakoSystem) {
       const buf = iconv.encode(s, 'euc-jp')
       await fs.writeFile(f, buf)
     },
@@ -189,11 +205,12 @@ export const PluginDeno = {
     josi: [['で'], ['を']],
     pure: true,
     asyncFn: true,
-    fn: async function (callback: any, s: string, sys: any) {
+    fn: async function (callback: NakoEventCallback, s: string, sys: NakoSystem) {
       const options = { output: OutputMode.Capture, verbose: false }
       const exeRes = await exec(s, options)
       const result = exeRes.output
-      callback(result)
+      callback = sys.__findFunc(callback, '起動時')
+      if (typeof callback === 'function') { callback(result, sys) }
     }
   },
   'ブラウザ起動': { // @ブラウザでURLを起動 // @ぶらうざきどう
@@ -247,6 +264,7 @@ export const PluginDeno = {
       basepath = path.resolve(basepath)
       const maskRE = new RegExp(mask, 'i')
       // 再帰関数を定義
+      // deno-lint-ignore no-explicit-any
       const enumR = async (base: any) => {
         const list = await fs.readdir(base)
         for (const f of list) {
@@ -291,27 +309,33 @@ export const PluginDeno = {
     type: 'func',
     josi: [['の', 'を', 'に', 'へ']],
     pure: true,
-    fn: function (path: string) {
-      return fse.mkdirpSync(path)
+    asyncFn: true,
+    fn: async function (path: string) {
+      return await Deno.mkdir(path, { recursive: true })
     }
   },
   'ファイルコピー': { // @パスAをパスBへファイルコピーする // @ふぁいるこぴー
     type: 'func',
     josi: [['から', 'を'], ['に', 'へ']],
     pure: true,
-    fn: function (a: string, b: string, sys: any) {
-      return fse.copySync(a, b)
+    asyncFn: true,
+    fn: async function (a: string, b: string, _sys: NakoSystem) {
+      return await Deno.copyFile(a, b)
     }
   },
   'ファイルコピー時': { // @パスAをパスBへファイルコピーしてcallbackを実行 // @ふぁいるこぴーしたとき
     type: 'func',
     josi: [['で'], ['から', 'を'], ['に', 'へ']],
     pure: true,
-    fn: function (callback: any, a: string, b: string, sys: any) {
-      return fse.copy(a, b, (err: any) => {
-        if (err) { throw new Error('ファイルコピー時:' + err) }
-        callback()
-      })
+    asyncFn: true,
+    fn: async function (callback: NakoCallback, a: string, b: string, sys: NakoSystem) {
+      try {
+        await Deno.copyFile(a, b)
+      } catch (err) {
+        throw new Error('ファイルコピー時:' + err)
+      }
+      callback = sys.__findFunc(callback, 'ファイルコピー時')
+      if (typeof callback === 'function') { callback(sys) }
     },
     return_none: false
   },
@@ -319,18 +343,21 @@ export const PluginDeno = {
     type: 'func',
     josi: [['から', 'を'], ['に', 'へ']],
     pure: true,
-    fn: function (a: string, b: string, sys: any) {
-      return fse.moveSync(a, b)
+    asyncFn: true,
+    fn: async function (a: string, b: string, _sys: NakoSystem) {
+      return await Deno.rename(a, b)
     }
   },
   'ファイル移動時': { // @パスAをパスBへ移動してcallbackを実行 // @ふぁいるいどうしたとき
     type: 'func',
     josi: [['で'], ['から', 'を'], ['に', 'へ']],
     pure: true,
-    fn: function (callback: any, a: string, b: string, sys: any) {
+    fn: function (callback: NakoCallback, a: string, b: string, sys: NakoSystem) {
+      // deno-lint-ignore no-explicit-any
       fse.move(a, b, (err: any) => {
         if (err) { throw new Error('ファイル移動時:' + err) }
-        callback()
+        callback = sys.__findFunc(callback, 'ファイル移動時')
+        if (typeof callback === 'function') { callback(sys) }
       })
     },
     return_none: false
@@ -339,7 +366,7 @@ export const PluginDeno = {
     type: 'func',
     josi: [['の', 'を']],
     pure: true,
-    fn: function (path: string, sys: any) {
+    fn: function (path: string, _sys: NakoSystem) {
       return fse.removeSync(path)
     }
   },
@@ -347,10 +374,12 @@ export const PluginDeno = {
     type: 'func',
     josi: [['で'], ['の', 'を']],
     pure: true,
-    fn: function (callback: any, path: string, sys: any) {
+    fn: function (callback: NakoCallback, path: string, sys: NakoSystem) {
+      // deno-lint-ignore no-explicit-any
       return fse.remove(path, (err: any) => {
         if (err) { throw new Error('ファイル削除時:' + err) }
-        callback()
+        callback = sys.__findFunc(callback, 'ファイル移動時')
+        if (typeof callback === 'function') { callback(sys) }
       })
     },
     return_none: false
@@ -360,7 +389,7 @@ export const PluginDeno = {
     josi: [['の', 'から']],
     pure: true,
     asyncFn: true,
-    fn: async function (path: string, sys: any) {
+    fn: async function (path: string, _sys: NakoSystem) {
       return await fs.stat(path)
     }
   },
@@ -369,7 +398,7 @@ export const PluginDeno = {
     josi: [['の', 'から']],
     pure: true,
     asyncFn: true,
-    fn: async function (path: string, sys: any) {
+    fn: async function (path: string, _sys: NakoSystem) {
       const st = await fs.stat(path)
       if (!st) { return -1 }
       return st.size
@@ -457,7 +486,7 @@ export const PluginDeno = {
     type: 'func',
     josi: [],
     pure: true,
-    fn: function (sys: any) {
+    fn: function (sys: NakoSystem) {
       const home = sys.__exec('ホームディレクトリ取得', [sys])
       return path.join(home, 'Desktop')
     }
@@ -466,7 +495,7 @@ export const PluginDeno = {
     type: 'func',
     josi: [],
     pure: true,
-    fn: function (sys: any) {
+    fn: function (sys: NakoSystem) {
       const home = sys.__exec('ホームディレクトリ取得', [sys])
       return path.join(home, 'Documents')
     }
@@ -476,15 +505,15 @@ export const PluginDeno = {
     type: 'func',
     josi: [],
     pure: true,
-    fn: function (sys: any) {
-      return sys.__getBokanPath()
+    fn: function (sys: NakoSystem) {
+      return sys.tags.__getBokanPath()
     }
   },
   'テンポラリフォルダ': { // @テンポラリフォルダのパスを取得して返す // @てんぽらりふぉるだ
     type: 'func',
     josi: [],
     pure: true,
-    fn: function (sys: any) {
+    fn: function (_sys: NakoSystem) {
       // 環境変数からテンポラリフォルダを取得
       return os.tmpdir()
     }
@@ -494,7 +523,7 @@ export const PluginDeno = {
     josi: [['に', 'へ']],
     pure: true,
     asyncFn: true,
-    fn: async function (dir: string, sys: any) {
+    fn: async function (dir: string, _sys: NakoSystem) {
       if (dir === '' || !dir) {
         dir = os.tmpdir()
       }
@@ -525,8 +554,8 @@ export const PluginDeno = {
     type: 'func',
     josi: [['に', 'へ']],
     pure: true,
-    fn: function (v: string, sys: any) {
-      sys.__v0['圧縮解凍ツールパス'] = v
+    fn: function (v: string, sys: NakoSystem) {
+      sys.__setSysVar('圧縮解凍ツールパス', v)
     },
     return_none: true
   },
@@ -535,10 +564,10 @@ export const PluginDeno = {
     josi: [['を', 'から'], ['に', 'へ']],
     pure: true,
     asyncFn: true,
-    fn: async function (a: string, b: string, sys: any) {
-      const tpath = sys.__quotePath(sys.__getBinPath(sys.__v0['圧縮解凍ツールパス']))
-      a = sys.__quotePath(a)
-      b = sys.__quotePath(b)
+    fn: async function (a: string, b: string, sys: NakoSystem) {
+      const tpath = sys.tags.__quotePath(sys.tags.__getBinPath(sys.__getSysVar('圧縮解凍ツールパス')))
+      a = sys.tags.__quotePath(a)
+      b = sys.tags.__quotePath(b)
       const cmd = `${tpath} x ${a} -o${b} -y`
       await exec(cmd)
       return true
@@ -549,17 +578,18 @@ export const PluginDeno = {
     josi: [['で'], ['を', 'から'], ['に', 'へ']],
     pure: true,
     asyncFn: true,
-    fn: async function (callback: any, a: string, b: string, sys: any) {
-      const tpath = sys.__quotePath(sys.__getBinPath(sys.__v0['圧縮解凍ツールパス']))
-      a = sys.__quotePath(a)
-      b = sys.__quotePath(b)
+    fn: async function (callback: NakoCallback, a: string, b: string, sys: NakoSystem) {
+      const tpath = sys.tags.__quotePath(sys.tags.__getBinPath(sys.__getSysVar('圧縮解凍ツールパス')))
+      a = sys.tags.__quotePath(a)
+      b = sys.tags.__quotePath(b)
       const cmd = `${tpath} x ${a} -o${b} -y`
       const opt = { output: OutputMode.Capture, verbose: false }
       const res = await exec(cmd, opt)
       if (!res.status.success) {
         if (res.output) { throw new Error('[エラー]『解凍時』' + res.output) }
       }
-      callback(res.output)
+      callback = sys.__findFunc(callback, '解凍時')
+      if (typeof callback === 'function') { callback(sys) }
     },
     return_none: false
   },
@@ -568,10 +598,10 @@ export const PluginDeno = {
     josi: [['を', 'から'], ['に', 'へ']],
     pure: true,
     asyncFn: true,
-    fn: async function (a: string, b: string, sys: any) {
-      const tpath = sys.__quotePath(sys.__getBinPath(sys.__v0['圧縮解凍ツールパス']))
-      a = sys.__quotePath(a)
-      b = sys.__quotePath(b)
+    fn: async function (a: string, b: string, sys: NakoSystem) {
+      const tpath = sys.tags.__quotePath(sys.tags.__getBinPath(sys.__getSysVar('圧縮解凍ツールパス')))
+      a = sys.tags.__quotePath(a)
+      b = sys.tags.__quotePath(b)
       const cmd = `${tpath} a -r ${b} ${a} -y`
       const res = await exec(cmd)
       return res.status.success
@@ -582,17 +612,18 @@ export const PluginDeno = {
     josi: [['で'], ['を', 'から'], ['に', 'へ']],
     pure: true,
     asyncFn: true,
-    fn: async function (callback: any, a: string, b: string, sys: any) {
-      const tpath = sys.__quotePath(sys.__getBinPath(sys.__v0['圧縮解凍ツールパス']))
-      a = sys.__quotePath(a)
-      b = sys.__quotePath(b)
+    fn: async function (callback: NakoEventCallback, a: string, b: string, sys: NakoSystem) {
+      const tpath = sys.tags.__quotePath(sys.tags.__getBinPath(sys.__getSysVar('圧縮解凍ツールパス')))
+      a = sys.tags.__quotePath(a)
+      b = sys.tags.__quotePath(b)
       const cmd = `${tpath} a -r ${b} ${a} -y`
       const opt = { output: OutputMode.Capture, verbose: false }
       const res = await exec(cmd, opt)
       if (!res.status.success) {
         if (res.output) { throw new Error('[エラー]『圧縮時』' + res.output) }
       }
-      callback(res.output)
+      callback = sys.__findFunc(callback, '圧縮時')
+      if (typeof callback === 'function') { callback(res.output, sys) }
     },
     return_none: true
   },
@@ -610,7 +641,8 @@ export const PluginDeno = {
     type: 'func',
     josi: [['を']],
     pure: true,
-    fn: function (func: any, sys: any) {
+    // deno-lint-ignore no-explicit-any
+    fn: function (func: any, sys: NakoSystem) {
       if (typeof (func) === 'string') {
         func = sys.__findFunc(func, '強制終了時')
       }
@@ -625,7 +657,7 @@ export const PluginDeno = {
     type: 'func',
     josi: [],
     pure: false,
-    fn: function (sys: any) {
+    fn: function (sys: NakoSystem) {
       sys.__exec('終', [])
     },
     return_none: true
@@ -634,7 +666,7 @@ export const PluginDeno = {
     type: 'func',
     josi: [],
     pure: true,
-    fn: function (sys: any) {
+    fn: function (_sys: NakoSystem) {
       return process.platform
     }
   },
@@ -642,7 +674,7 @@ export const PluginDeno = {
     type: 'func',
     josi: [],
     pure: true,
-    fn: function (sys: any) {
+    fn: function (_sys: NakoSystem) {
       return process.arch
     }
   },
@@ -650,17 +682,18 @@ export const PluginDeno = {
   'コマンドライン': { type: 'const', value: '' }, // @こまんどらいん
   'ナデシコランタイム': { type: 'const', value: '' }, // @なでしこらんたいむ
   'ナデシコランタイムパス': { type: 'const', value: '' }, // @なでしこらんたいむぱす
-  '標準入力取得時': { // @標準入力を一行取得した時に、無名関数（あるいは、文字列で関数名を指定）F(s: string)を実行する // @ひょうじゅんにゅうりょくしゅとくしたとき
+  '標準入力取得時': { // @標準入力を一行取得した時に、無名関数（あるいは、文字列で関数名を指定）callbackを実行する // @ひょうじゅんにゅうりょくしゅとくしたとき
     type: 'func',
     josi: [['を']],
     pure: true,
-    fn: function (callback: any) {
+    fn: function (callback: NakoEventCallback, sys: NakoSystem) {
       const reader = readline.createInterface({
         input: process.stdin,
         output: process.stdout
       })
-      reader.on('line', function (line) {
-        callback(line)
+      callback = sys.__findFunc(callback, '標準入力取得時')
+      reader.on('line', function (line: string) {
+        if (typeof callback === 'function') { callback(line, sys) }
       })
     }
   },
@@ -669,6 +702,7 @@ export const PluginDeno = {
     josi: [['と', 'を']],
     pure: true,
     asyncFn: true,
+    // deno-lint-ignore no-explicit-any
     fn: function (msg: string): Promise<any> {
       return new Promise((resolve, reject) => {
         const rl = readline.createInterface(process.stdin, process.stdout)
@@ -676,6 +710,7 @@ export const PluginDeno = {
           reject(new Error('『尋』命令で標準入力が取得できません'))
           return
         }
+        // deno-lint-ignore no-explicit-any
         rl.question(msg, (buf: any) => {
           rl.close()
           if (buf && buf.match(/^[0-9.]+$/)) { buf = parseFloat(buf) }
@@ -689,8 +724,13 @@ export const PluginDeno = {
     type: 'func',
     josi: [['と'], ['が']],
     pure: true,
-    fn: function (a: any, b: any, sys: any) {
-      assert.strictEqual(a, b)
+    // deno-lint-ignore no-explicit-any
+    fn: function (a: any, b: any, _sys: NakoSystem) {
+      if (a === b) {
+        return
+      } else {
+        new Error('ASSERT等:失敗 ' + a + ' !== ' + b)
+      }
     }
   },
   // @ネットワーク
@@ -698,7 +738,7 @@ export const PluginDeno = {
     type: 'func',
     josi: [],
     pure: true,
-    fn: function (sys: any) {
+    fn: function (_sys: NakoSystem) {
       const nif = os.networkInterfaces()
       if (!nif) { throw new Error('『自分IPアドレス取得』でネットワークのインターフェイスが種畜できません。') }
       /**
@@ -720,7 +760,7 @@ export const PluginDeno = {
     type: 'func',
     josi: [],
     pure: true,
-    fn: function (sys: any) {
+    fn: function (_sys: NakoSystem) {
       const nif = os.networkInterfaces()
       if (!nif) { throw new Error('『自分IPアドレス取得』でネットワークのインターフェイスが種畜できません。') }
       const result: string[] = []
@@ -740,14 +780,17 @@ export const PluginDeno = {
     type: 'func',
     josi: [['の'], ['まで', 'へ', 'に']],
     pure: true,
-    fn: function (callback: any, url: string, sys: any) {
-      let options = sys.__v0['AJAXオプション']
+    fn: function (callback: NakoEventCallback, url: string, sys: NakoSystem) {
+      let options = sys.__getSysVar('AJAXオプション')
       if (options === '') { options = { method: 'GET' } }
+      // deno-lint-ignore no-explicit-any
       fetch(url, options).then((res: any) => {
         return res.text()
       }).then((text: string) => {
-        sys.__v0['対象'] = text
-        callback(text)
+        sys.__setSysVar('対象', text)
+        callback = sys.__findFunc(callback, 'AJAX送信時')
+        if (typeof callback === 'function') { callback(text, sys) }
+        // deno-lint-ignore no-explicit-any
       }).catch((err: any) => {
         console.log('[fetch.error]', err)
         throw err
@@ -759,7 +802,7 @@ export const PluginDeno = {
     type: 'func',
     josi: [['で'], ['から', 'を']],
     pure: true,
-    fn: function (callback: any, url: string, sys: any) {
+    fn: function (callback: NakoCallback, url: string, sys: NakoSystem) {
       sys.__exec('AJAX送信時', [callback, url, sys])
     },
     return_none: true
@@ -768,7 +811,7 @@ export const PluginDeno = {
     type: 'func',
     josi: [['の'], ['まで', 'へ', 'に']],
     pure: false,
-    fn: function (callback: any, url: string, sys: any) {
+    fn: function (callback: NakoCallback, url: string, sys: NakoSystem) {
       sys.__exec('AJAX送信時', [callback, url, sys])
     },
     return_none: true
@@ -777,7 +820,8 @@ export const PluginDeno = {
     type: 'func',
     josi: [['の'], ['まで', 'へ', 'に'], ['を']],
     pure: true,
-    fn: function (callback: any, url: string, params: any, sys: any) {
+    // deno-lint-ignore no-explicit-any
+    fn: function (callback: NakoEventCallback, url: string, params: any, sys: NakoSystem) {
       const flist = []
       for (const key in params) {
         const v = params[key]
@@ -792,13 +836,16 @@ export const PluginDeno = {
         },
         body: bodyData
       }
+      callback = sys.__findFunc(callback, 'POST送信時')
+      // deno-lint-ignore no-explicit-any
       fetch(url, options).then((res: any) => {
         return res.text()
       }).then((text: string) => {
-        sys.__v0['対象'] = text
-        callback(text)
+        sys.__setSysVar('対象', text)
+        if (typeof callback === 'function') { callback(text, sys) }
+        // deno-lint-ignore no-explicit-any
       }).catch((err: any) => {
-        sys.__v0['AJAX:ONERROR'](err)
+        sys.__getSysVar('AJAX:ONERROR')(err)
       })
     }
   },
@@ -806,7 +853,8 @@ export const PluginDeno = {
     type: 'func',
     josi: [['の'], ['まで', 'へ', 'に'], ['を']],
     pure: true,
-    fn: function (callback: any, url: string, params: any, sys: any) {
+    // deno-lint-ignore no-explicit-any
+    fn: function (callback: NakoEventCallback, url: string, params: any, sys: NakoSystem) {
       const fd = new FormData()
       for (const key in params) { fd.set(key, params[key]) }
 
@@ -817,13 +865,16 @@ export const PluginDeno = {
         },
         body: fd
       }
+      // deno-lint-ignore no-explicit-any
       fetch(url, options).then((res: any) => {
         return res.text()
       }).then((text: string) => {
-        sys.__v0['対象'] = text
-        callback(text)
+        sys.__setSysVar('対象', text)
+        callback = sys.__findFunc(callback, 'POST送信時')
+        if (typeof callback === 'function') { callback(text, sys) }
+        // deno-lint-ignore no-explicit-any
       }).catch((err: any) => {
-        sys.__v0['AJAX:ONERROR'](err)
+        sys.__getSysVar('AJAX:ONERROR')(err)
       })
     }
   },
@@ -831,8 +882,8 @@ export const PluginDeno = {
     type: 'func',
     josi: [['の']],
     pure: true,
-    fn: function (callback: any, sys: any) {
-      sys.__v0['AJAX:ONERROR'] = callback
+    fn: function (callback: NakoCallback, sys: NakoSystem) {
+      sys.__setSysVar('AJAX:ONERROR', callback)
     }
   },
   'AJAXオプション': { type: 'const', value: '' }, // @Ajax関連のオプションを指定 // @AJAXおぷしょん
@@ -840,8 +891,9 @@ export const PluginDeno = {
     type: 'func',
     josi: [['に', 'へ', 'と']],
     pure: true,
-    fn: function (option: any, sys: any) {
-      sys.__v0['AJAXオプション'] = option
+    // deno-lint-ignore no-explicit-any
+    fn: function (option: any, sys: NakoSystem) {
+      sys.__setSysVar('AJAXオプション', option)
     },
     return_none: true
   },
@@ -849,8 +901,8 @@ export const PluginDeno = {
     type: 'func',
     josi: [['まで', 'へ', 'に']],
     pure: true,
-    fn: function (url: string, sys: any) {
-      let options = sys.__v0['AJAXオプション']
+    fn: function (url: string, sys: NakoSystem) {
+      let options = sys.__getSysVar('AJAXオプション')
       if (options === '') { options = { method: 'GET' } }
       return fetch(url, options)
     },
@@ -860,7 +912,7 @@ export const PluginDeno = {
     type: 'func',
     josi: [['の', 'から', 'を']],
     pure: true,
-    fn: function (url: string, sys: any) {
+    fn: function (url: string, sys: NakoSystem) {
       return sys.__exec('AJAX保障送信', [url, sys])
     },
     return_none: false
@@ -869,7 +921,7 @@ export const PluginDeno = {
     type: 'func',
     josi: [['まで', 'へ', 'に']],
     pure: true,
-    fn: function (url: string, sys: any) {
+    fn: function (url: string, sys: NakoSystem) {
       return sys.__exec('AJAX保障送信', [url, sys])
     },
     return_none: false
@@ -878,7 +930,8 @@ export const PluginDeno = {
     type: 'func',
     josi: [['まで', 'へ', 'に'], ['を']],
     pure: true,
-    fn: function (url: string, params: any, sys: any) {
+    // deno-lint-ignore no-explicit-any
+    fn: function (url: string, params: any, _sys: NakoSystem) {
       const flist = []
       for (const key in params) {
         const v = params[key]
@@ -901,7 +954,8 @@ export const PluginDeno = {
     type: 'func',
     josi: [['まで', 'へ', 'に'], ['を']],
     pure: true,
-    fn: function (url: string, params: any, sys: any) {
+    // deno-lint-ignore no-explicit-any
+    fn: function (url: string, params: any, _sys: NakoSystem) {
       const fd = new FormData()
       for (const key in params) { fd.set(key, params[key]) }
 
@@ -917,7 +971,8 @@ export const PluginDeno = {
     type: 'func',
     josi: [['から'], ['で']],
     pure: true,
-    fn: function (res: any, type: string, sys: any) {
+    // deno-lint-ignore no-explicit-any
+    fn: function (res: any, type: string, _sys: NakoSystem) {
       type = type.toString().toUpperCase()
       if (type === 'TEXT' || type === 'テキスト') {
         return res.text()
@@ -938,31 +993,13 @@ export const PluginDeno = {
     },
     return_none: false
   },
-  'AJAX受信': { // @「!非同期モード」で非同期通信(Ajax)でURLからデータを受信する。『AJAXオプション』を指定できる。結果は変数『対象』に入る// @AJAXじゅしん
+  'AJAX受信': { // @ AJAXテキスト取得と同じ // @AJAXじゅしん
     type: 'func',
     josi: [['から', 'を']],
     pure: true,
-    fn: function (url: string, sys: any) {
-      if (sys.__genMode !== '非同期モード') {
-        throw new Error('『AJAX受信』を使うには、プログラムの冒頭で「!非同期モード」と宣言してください。')
-      }
-      const sysenv = sys.setAsync(sys)
-      let options = sys.__v0['AJAXオプション']
-      if (options === '') { options = { method: 'GET' } }
-      // fetch 実行
-      fetch(url, options).then((res: any) => {
-        if (res.ok) { // 成功したとき
-          return res.text()
-        } else { // 失敗したとき
-          throw new Error('status=' + res.status)
-        }
-      }).then((text: string) => {
-        sys.__v0['対象'] = text
-        sys.compAsync(sys, sysenv)
-      }).catch((err: any) => {
-        console.error('[AJAX受信のエラー]', err)
-        sys.__errorAsync(err, sys)
-      })
+    asyncFn: true,
+    fn: function (url: string, sys: NakoSystem) {
+      return sys.__exec('AJAXテキスト取得', [url, sys])
     },
     return_none: true
   },
@@ -970,7 +1007,8 @@ export const PluginDeno = {
     type: 'func',
     josi: [['の', 'を']],
     pure: true,
-    fn: function (params: any, sys: any) {
+    // deno-lint-ignore no-explicit-any
+    fn: function (params: any, _sys: NakoSystem) {
       const flist = []
       for (const key in params) {
         const v = params[key]
@@ -986,8 +1024,8 @@ export const PluginDeno = {
     josi: [['から']],
     pure: true,
     asyncFn: true,
-    fn: async function (url: string, sys: any) {
-      let options = sys.__v0['AJAXオプション']
+    fn: async function (url: string, sys: NakoSystem) {
+      let options = sys.__getSysVar('AJAXオプション')
       if (options === '') { options = { method: 'GET' } }
       console.log(url, options)
       const res = await fetch(url, options)
@@ -1001,8 +1039,8 @@ export const PluginDeno = {
     josi: [['から']],
     pure: true,
     asyncFn: true,
-    fn: async function (url: string, sys: any) {
-      let options = sys.__v0['AJAXオプション']
+    fn: async function (url: string, sys: NakoSystem) {
+      let options = sys.__getSysVar('AJAXオプション')
       if (options === '') { options = { method: 'GET' } }
       const res = await fetch(url, options)
       const txt = await res.json()
@@ -1015,8 +1053,8 @@ export const PluginDeno = {
     josi: [['から']],
     pure: true,
     asyncFn: true,
-    fn: async function (url: string, sys: any) {
-      let options = sys.__v0['AJAXオプション']
+    fn: async function (url: string, sys: NakoSystem) {
+      let options = sys.__getSysVar('AJAXオプション')
       if (options === '') { options = { method: 'GET' } }
       const res = await fetch(url, options)
       const bin = await res.arrayBuffer()
@@ -1030,7 +1068,7 @@ export const PluginDeno = {
     josi: [['へ', 'に'], ['を']],
     pure: true,
     asyncFn: true,
-    fn: async function (token: string, message: string, sys: any) {
+    fn: async function (token: string, message: string, sys: NakoSystem) {
       const lineNotifyUrl = 'https://notify-api.line.me/api/notify'
       const bodyData = sys.__exec('POSTデータ生成', [{ message }, sys])
       const options = {
@@ -1052,11 +1090,11 @@ export const PluginDeno = {
     josi: [['へ', 'に'], ['と'], ['を']],
     pure: true,
     asyncFn: true,
-    fn: async function (token: string, imageFile: string, message: string, sys: any) {
+    fn: async function (token: string, imageFile: string, message: string, _sys: NakoSystem) {
       const lineNotifyUrl = 'https://notify-api.line.me/api/notify'
       const formData = new FormData()
       formData.append('message', message)
-      const imageData = fs.readFileSync(imageFile)
+      const imageData = fse.readFileSync(imageFile)
       formData.append('imageFile', new Blob([imageData]))
       const options = {
         'method': 'POST',
@@ -1076,7 +1114,7 @@ export const PluginDeno = {
     type: 'func',
     josi: [['の', 'を']],
     pure: true,
-    fn: function (code: string, sys: any) {
+    fn: function (code: string, _sys: NakoSystem) {
       return iconv.encodingExists(code)
     }
   },
@@ -1084,7 +1122,7 @@ export const PluginDeno = {
     type: 'func',
     josi: [['に', 'へ', 'を']],
     pure: true,
-    fn: function (str: string, sys: any) {
+    fn: function (str: string, _sys: NakoSystem) {
       // iconv.skipDecodeWarning = true
       return iconv.encode(str, 'Shift_JIS')
     }
@@ -1093,16 +1131,17 @@ export const PluginDeno = {
     type: 'func',
     josi: [['から', 'を', 'で']],
     pure: true,
-    fn: function (buf: any, sys: any) {
-      // iconv.skipDecodeWarning = true
-      return iconv.decode(Buffer.from(buf), 'sjis')
+    fn: function (buf: BufferSource, _sys: NakoSystem) {
+      const encoder = new TextDecoder('sjis')
+      const result = encoder.decode(buf)
+      return result
     }
   },
   'エンコーディング変換': { // @文字列SをCODEへ変換してバイナリバッファを返す // @ えんこーでぃんぐへんかん
     type: 'func',
     josi: [['を'], ['へ', 'で']],
     pure: true,
-    fn: function (s: string, code: string, sys: any) {
+    fn: function (s: string, code: string, _sys: NakoSystem) {
       // iconv.skipDecodeWarning = true
       return iconv.encode(s, code)
     }
@@ -1111,9 +1150,10 @@ export const PluginDeno = {
     type: 'func',
     josi: [['を'], ['から', 'で']],
     pure: true,
-    fn: function (buf: any, code: string, sys: any) {
+    // deno-lint-ignore no-explicit-any
+    fn: function (buf: any, code: string, _sys: NakoSystem) {
       // iconv.skipDecodeWarning = true
-      return iconv.decode(Buffer.from(buf), code)
+      return iconv.decode(buf, code)
     }
   },
   // @ハッシュ関数
@@ -1121,7 +1161,7 @@ export const PluginDeno = {
     type: 'func',
     josi: [],
     pure: true,
-    fn: function (sys: any) {
+    fn: function (_sys: NakoSystem) {
       return crypto.getHashes()
     }
   },
@@ -1129,7 +1169,8 @@ export const PluginDeno = {
     type: 'func',
     josi: [['を'], ['の'], ['で']],
     pure: true,
-    fn: function (s: any, alg: string, enc: any, sys: any) {
+    // deno-lint-ignore no-explicit-any
+    fn: function (s: any, alg: string, enc: any, _sys: NakoSystem) {
       const hashsum = crypto.createHash(alg)
       hashsum.update(s)
       return hashsum.digest(enc)
@@ -1143,14 +1184,8 @@ export function fileExists (filename: string): boolean {
     const st = Deno.statSync(filename)
     return st.isFile || st.isDirectory
     // successful, file or directory must exist
-  } catch (error) {
-    if (error && error.kind === Deno.ErrorKind.NotFound) {
-      // file or directory does not exist
+  } catch (_error) {
       return false
-    } else {
-      // unexpected error, maybe permissions, pass it along
-      throw error
-    }
   }
 }
 

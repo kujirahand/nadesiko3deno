@@ -1,7 +1,8 @@
 // commander_ja.js
 import * as process from 'https://deno.land/std@0.177.0/node/process.ts'
 
-const CommanderJa: {[key: string]: any} = {
+// deno-lint-ignore no-explicit-any
+const CommanderJa: Record<string, any> = {
   args: /** @type {string[]} */([]),
   _alias: /** @type {Record<string, string>} */({}),
   _hasarg: /** @type {Record<string, boolean>} */({}),
@@ -71,7 +72,7 @@ const CommanderJa: {[key: string]: any} = {
     }
     if (name1 === 'version') { name1 = 'version_' }
     this[name1] = false
-    name2.forEach((t: any) => {
+    name2.forEach((t: string) => {
       this._alias[t] = name1
     })
     this._hasarg[name1] = (cmd.indexOf('[') >= 0)
@@ -149,6 +150,7 @@ const CommanderJa: {[key: string]: any} = {
     ss += '使い方: ' + this._usage + '\n'
     ss += 'オプション:\n'
     const spc = '                               '
+    // deno-lint-ignore no-explicit-any
     this._help.forEach((c: any) => {
       const opt = c[0] + spc
       ss += '  ' + opt.substring(0, 20) + ' ' + c[1] + '\n'

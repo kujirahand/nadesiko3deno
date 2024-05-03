@@ -1,10 +1,15 @@
 {
-    "version": "3.4.7",
-    "tasks_usage": "$ deno task hello",
-    "tasks": {
-        "hello": "deno run --allow-all src/dnako3.ts -e '「こんにちは」と表示。'",
-        "build": "deno run --allow-all src/dnako3.ts batch/build_version.nako3",
-        "hello2": "deno run --allow-all src/dnako3.ts -D sample/hello.nako3"
-    }
+  "version": "3.4.7",
+  "tasks_usage": "$ deno task hello",
+  "tasks": {
+    "hello": "deno run --allow-all src/dnako3.ts -e '「こんにちは」と表示。'",
+    "build": "deno run --allow-all src/dnako3.ts batch/build_version.nako3",
+    "hello2": "deno run --allow-all src/dnako3.ts -D sample/hello.nako3"
+  },
+  "imports": {
+    "@std/path": "jsr:@std/path@^0.224.0",
+    "fs-extra": "npm:fs-extra@^11.2.0",
+    "nadesiko3core": "npm:nadesiko3core@^3.6.3",
+    "shell-quote": "npm:shell-quote@^1.8.1"
+  }
 }
-
